@@ -54,7 +54,7 @@ void printUsage()
     cout << "                      defaults to both" << endl;
 }
 
-int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips, vector<string> &protocols)
+bool parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips, vector<string> &protocols)
 {
     bool single_ip = false;
 
@@ -102,7 +102,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
         if(strcmp(argv[i], "--help") == 0)
         {
             printUsage();
-            exit(1);
+            return false;
         }
         else if(strcmp(argv[i], "--port") == 0)
         {
@@ -133,7 +133,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
                         else
                         {
                             cout << "invalid port: " << split[j] << endl;
-                            exit(1);
+                            return false;
                         }
                     }
                 }
@@ -152,7 +152,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
                     if(end < begin)
                     {
                         cout << "invalid port range: " << begin << "-" << end << endl;
-                        exit(1);
+                        return false;
                     }
 
                     for(int j = 0; j <= range; j++)
@@ -163,7 +163,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
                 else
                 {
                     cout << "invalid port: " << argv[i+1] << endl;
-                    exit(1);
+                    return false;
                 }
 
                 i++;
@@ -171,7 +171,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
             else
             {
                 cout << "missing arg: " << argv[i] << endl;
-                exit(1);
+                return false;
             }
             // or add port range to port list (decode range)
         }
@@ -204,7 +204,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
                             else
                             {
                                 cout << "invalid ip: " << split[j] << endl;
-                                exit(1);
+                                return false;
                             }
                         }
                     }
@@ -219,7 +219,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
                         else
                         {
                             cout << argv[i] << ": individual address has already been supplied" << endl;
-                            exit(1);
+                            return false;
                         }
                         
                     }
@@ -233,7 +233,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
                         if(end < begin)
                         {
                             cout << "invalid address range: " << begin << "-" << end << endl;
-                            exit(1);
+                            return false;
                         }
 
                         string base = match[1].str() + "." + match[2].str() + "." + match[3].str() + ".";
@@ -245,7 +245,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
                     else
                     {
                         cout << "invalid ip: " << argv[i+1] << endl;
-                        exit(1);
+                        return false;
                     }
 
                     i++;
@@ -253,13 +253,13 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
                 else
                 {
                     cout << "missing arg: " << argv[i] << endl;
-                    exit(1);
+                    return false;
                 }
             }
             else
             {
                 cout << argv[i] << ": individual address has already been supplied" << endl;
-                exit(1);
+                return false;
             }
         }
         else if(strcmp(argv[i], "--file") == 0)
@@ -276,7 +276,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
                 if(!ifs.is_open())
                 {
                     cout << "problem opening file: " << filename << endl;
-                    exit(1);
+                    return false;
                 }
 
                 string ip;
@@ -292,7 +292,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
             else
             {
                 cout << "missing arg: " << argv[i] << endl;
-                exit(1);
+                return false;
             }
         }
         else if(strcmp(argv[i], "--transport") == 0)
@@ -306,7 +306,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
             else
             {
                 cout << "missing arg: " << argv[i] << endl;
-                exit(1);
+                return false;
             }
         }
         else if(regex_match(argv[i], re_ip))
@@ -320,13 +320,13 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
             else
             {
                 cout << argv[i] << ": individual address has already been supplied" << endl;
-                exit(1);
+                return false;
             }
         }
         else
         {
             cout << "Unknown argument: " << argv[i] << endl;
-            exit(1);
+            return false;
         }
     }
 
@@ -342,7 +342,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
         {
             cout << "port out of range: " << ports[i] << endl;
             cout << "accepted range: 1-65535" << endl;
-            exit(1);
+            return false;
         }
     }
 
@@ -350,7 +350,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
     if(protocols.size() > 2)
     {
         cout << "too many protocols, max of 2" << endl;
-        exit(1);
+        return false;
     }
 
     // Check if protocol is in accepted list
@@ -359,7 +359,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
         if(protocols[i] != "TCP" && protocols[i] != "tcp" && protocols[i] != "UDP" && protocols[i] != "udp")
         {
             cout << "unknown protocol: " << protocols[i] << endl;
-            exit(1);
+            return false;
         }
     }
 
@@ -367,7 +367,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
     if(ips.empty())
     {
         cout << "no ip specified, use --ip and/or --file" << endl;
-        exit(1);
+        return false;
     }
     
     /******************* POPULATE DEFAULTS *******************/
@@ -409,9 +409,7 @@ int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips
         cout << "protocols[" << i << "] = " << protocols[i] << endl;
     }
 
-    // TODO return object that contains populated args
-    //      or just update by reference (preferred)
-    return 0;
+    return true;
 }
 
 int main(int argc, char* argv[])
@@ -426,7 +424,10 @@ int main(int argc, char* argv[])
     vector<string> ips;
     vector<string> protocols;
 
-    parseOptions(argc, argv, ports, ips, protocols);
+    if(!parseOptions(argc, argv, ports, ips, protocols))
+    {
+        return 1;
+    }
     
     return 0;
 }
