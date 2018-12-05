@@ -18,6 +18,7 @@ using std::to_string;
 using std::stringstream;
 using std::sort;
 using std::unique;
+using std::stoi;
 
 void printUsage()
 {
@@ -32,6 +33,7 @@ void printUsage()
     cout << "          --port" << endl;
     cout << "                      scan designated ports" << endl;
     cout << "                      defaults to 1-1024" << endl;
+    cout << "                      accepted range: 1-65535" << endl;
     cout << "                      accepted formats:" << endl;
     cout << "                          single port:    --port 23" << endl;
     cout << "                          range of ports: --port 2000-3000" << endl;
@@ -52,15 +54,15 @@ void printUsage()
     cout << "                      defaults to both" << endl;
 }
 
-int parseOptions(int argc, char* argv[])
+int parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ips, vector<string> &protocols)
 {
     bool single_ip = false;
 
     string filename = "";
 
-    vector<int> ports;
-    vector<string> ips;
-    vector<string> protocols;
+    //vector<int> ports;
+    //vector<string> ips;
+    //vector<string> protocols;
 
     cmatch match;
 
@@ -108,19 +110,55 @@ int parseOptions(int argc, char* argv[])
             if(i + 1 != argc)
             {
                 // add list of ports
-                if()
+                if(regex_match(argv[i+1], re_port_list))
                 {
+                    vector<string> split;
+                    stringstream ss (argv[i+1]);
 
-                }
-                // add range of ports
-                else if()
-                {
+                    // Split argument by commas
+                    while(ss.good())
+                    {
+                        string substr;
+                        getline(ss, substr, ',');
+                        split.push_back(substr);
+                    }
 
+                    // loop through each port
+                    for(int j = 0; j < split.size(); j++)
+                    {
+                        if(regex_match(split[j], re_port))
+                        {
+                            ports.push_back(stoi(split[j]));
+                        }
+                        else
+                        {
+                            cout << "invalid port: " << split[j] << endl;
+                            exit(1);
+                        }
+                    }
                 }
                 // add single port
-                else if()
+                else if(regex_match(argv[i+1], re_port))
                 {
+                    ports.push_back(stoi(argv[i+1]));                    
+                }
+                // add range of ports
+                else if(regex_match(argv[i+1], match, re_port_range))
+                {
+                    int begin = stoi(match[1].str());
+                    int end = stoi(match[2].str());
+                    int range = end - begin;
 
+                    if(end < begin)
+                    {
+                        cout << "invalid port range: " << begin << "-" << end << endl;
+                        exit(1);
+                    }
+
+                    for(int j = 0; j <= range; j++)
+                    {
+                        ports.push_back(begin + j);
+                    }
                 }
                 else
                 {
@@ -128,6 +166,7 @@ int parseOptions(int argc, char* argv[])
                     exit(1);
                 }
 
+                i++;
             }
             else
             {
@@ -233,6 +272,13 @@ int parseOptions(int argc, char* argv[])
 
                 // parse ips from file and add them to ip list
                 ifstream ifs (filename);
+
+                if(!ifs.is_open())
+                {
+                    cout << "problem opening file: " << filename << endl;
+                    exit(1);
+                }
+
                 string ip;
 
                 while(ifs >> ip)
@@ -288,43 +334,99 @@ int parseOptions(int argc, char* argv[])
     sort(ips.begin(), ips.end());
     ips.erase(unique(ips.begin(), ips.end()), ips.end());
 
-    // Check to see if anything integral wasn't assigned
-    // If so, assign defaults here and return object? json?
-    
+    // Check port bounds
     cout << endl;
+    for(int i = 0; i < ports.size(); i++)
+    {
+        if(ports[i] < 1 || ports[i] > 65535)
+        {
+            cout << "port out of range: " << ports[i] << endl;
+            cout << "accepted range: 1-65535" << endl;
+            exit(1);
+        }
+    }
+
+    // Technically this isn't possible, but I'm going to leave it in
+    if(protocols.size() > 2)
+    {
+        cout << "too many protocols, max of 2" << endl;
+        exit(1);
+    }
+
+    // Check if protocol is in accepted list
+    for(int i = 0; i < protocols.size(); i++)
+    {
+        if(protocols[i] != "TCP" && protocols[i] != "tcp" && protocols[i] != "UDP" && protocols[i] != "udp")
+        {
+            cout << "unknown protocol: " << protocols[i] << endl;
+            exit(1);
+        }
+    }
+
+    // Check if no ip was specified
+    if(ips.empty())
+    {
+        cout << "no ip specified, use --ip and/or --file" << endl;
+        exit(1);
+    }
+    
+    /******************* POPULATE DEFAULTS *******************/
+    if(ports.empty())
+    {
+        cout << "no ports specified, default: 1-1024" << endl;
+        for(int i = 1; i <= 1024; i++)
+        {
+            ports.push_back(i);
+        }
+    }
+
+    if(protocols.empty())
+    {
+        cout << "no protocol specified, default: [TCP,UDP]" << endl;
+        protocols.push_back("TCP");
+        protocols.push_back("UDP");
+    }
+
+    // Print summary (TODO: formatting)
+    cout << endl;
+    cout << "ports:" << endl;
+    for(int i = 0; i < ports.size(); i++)
+    {
+        cout << "ports[" << i << "] = " << ports[i] << endl;
+    }
+
+    cout << endl;
+    cout << "ips:" << endl;
     for(int i = 0; i < ips.size(); i++)
     {
         cout << "ips[" << i << "] = " << ips[i] << endl;
     }
-    cout << endl;
 
+    cout << endl;
+    cout << "protocols:" << endl;
     for(int i = 0; i < protocols.size(); i++)
     {
-        cout << "protocols[" << i << "] = " << protocols[i];
+        cout << "protocols[" << i << "] = " << protocols[i] << endl;
     }
 
-    cout << endl;
+    // TODO return object that contains populated args
+    //      or just update by reference (preferred)
     return 0;
 }
 
 int main(int argc, char* argv[])
 {
-    // ./portScanner --port 
-    // Not sure if we can specify a max argc since the individual
-    // ports could be any amount?
     if(argc < 2)
     {
         printUsage();
         return 1;
     }
-    if(parseOptions(argc, argv) == -1)
-    {
-        //return -1;
-    }
-    //if(parseOptions(argc, argv))
-    {
 
-    }
+    vector<int> ports;
+    vector<string> ips;
+    vector<string> protocols;
 
+    parseOptions(argc, argv, ports, ips, protocols);
+    
     return 0;
 }
