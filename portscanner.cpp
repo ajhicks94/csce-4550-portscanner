@@ -3,6 +3,8 @@
 #include <string>
 #include <regex>
 #include <fstream>
+#include <sstream>
+#include <algorithm>
 
 using std::cout;
 using std::endl;
@@ -12,6 +14,10 @@ using std::regex;
 using std::regex_match;
 using std::cmatch;
 using std::ifstream;
+using std::to_string;
+using std::stringstream;
+using std::sort;
+using std::unique;
 
 void printUsage()
 {
@@ -34,7 +40,9 @@ void printUsage()
     cout << "                      scan designated ip address" << endl;
     cout << "                      accepted formats:" << endl;
     cout << "                          single ip:      --ip 129.120.93.94" << endl;
-    cout << "                          ip range:       --ip 129.120.93.87-200" << endl;
+    cout << "                          range of ips:   --ip 129.120.93.87-200" << endl;
+    cout << "                          list of ips:    --ip 129.120.95.101,129.121.96.40" << endl;
+    cout << "                                          NOTE: no spaces between values and commas" << endl;
     cout << "          --file" << endl;
     cout << "                      scan ip addresses in file" << endl;
     cout << "          --transport" << endl;
@@ -53,15 +61,21 @@ int parseOptions(int argc, char* argv[])
     vector<string> ips;
     vector<string> protocols;
 
+    cmatch match;
     regex re_ip ("\\b(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
-  "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
-  "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
-  "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\b");
+    "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
+    "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
+    "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\b");
 
     regex re_ip_range ("\\b(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
-  "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
-  "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
-  "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])-(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\b");
+    "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
+    "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
+    "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])-(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\b");
+
+    regex re_ip_list ("\\b(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
+    "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
+    "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\."
+    "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\b,\\d.*");
 
     for(size_t i = 1; i < argc; i++)
     {
@@ -77,33 +91,90 @@ int parseOptions(int argc, char* argv[])
         }
         else if(strcmp(argv[i], "--ip") == 0)
         {
-            if(i + 1 != argc)
+            if(!single_ip)
             {
-               if(regex_match(argv[i+1], re_ip))
+                if(i + 1 != argc)
                 {
-                    ips.push_back(argv[i+1]);
-                }
-                else if(regex_match(argv[i+1], re_ip_range))
-                {
-                    
-                    //ips.push_back(argv[i+1]);
+                    // matches list of ips (well, it would match this 129.120.210.235 , 2)
+                    if(regex_match(argv[i+1], re_ip_list))
+                    {
+                        // Split the argument by commas
+                        vector<string> split;
+                        stringstream ss(argv[i+1]);
+
+                        while(ss.good())
+                        {
+                            string substr;
+                            getline(ss, substr, ',');
+                            split.push_back(substr);
+                        }
+
+                        for(int j = 0; j < split.size(); j++)
+                        {
+                            if(regex_match(split[j], re_ip))
+                            {
+                                ips.push_back(split[j]);
+                            }
+                            else
+                            {
+                                cout << "invalid ip: " << split[j] << endl;
+                                exit(1);
+                            }
+                        }
+                    }
+                    // matches single ip address
+                    else if(regex_match(argv[i+1], re_ip))
+                    {
+                        if(!single_ip)
+                        {
+                            ips.push_back(argv[i+1]);
+                            single_ip = true;
+                        }
+                        else
+                        {
+                            cout << argv[i] << ": individual address has already been supplied" << endl;
+                            exit(1);
+                        }
+                        
+                    }
+                    // matches ip address range
+                    else if(regex_match(argv[i+1], match, re_ip_range))
+                    {
+                        int begin = stoi(match[4].str());
+                        int end = stoi(match[5].str());
+                        int range = end - begin;
+
+                        if(end < begin)
+                        {
+                            cout << "invalid address range: " << begin << "-" << end << endl;
+                            exit(1);
+                        }
+
+                        string base = match[1].str() + "." + match[2].str() + "." + match[3].str() + ".";
+                        for(int j = 0; j <= range; j++)
+                        {
+                            ips.push_back(base + to_string(begin + j));
+                        }
+                    }
+                    else
+                    {
+                        cout << "invalid ip: " << argv[i+1] << endl;
+                        exit(1);
+                    }
+
+                    i++;
                 }
                 else
                 {
-                    cout << "unrecognized ip: " << argv[i+1] << endl;
+                    cout << "missing arg: " << argv[i] << endl;
                     exit(1);
                 }
-
-                i++;
             }
             else
             {
-                cout << "missing arg: " << argv[i] << endl;
+                cout << argv[i] << ": individual address has already been supplied" << endl;
                 exit(1);
             }
-            
-            // add ip to ip list
-            // or add ip range to ip list (decode range first)
         }
         else if(strcmp(argv[i], "--file") == 0)
         {
@@ -166,6 +237,10 @@ int parseOptions(int argc, char* argv[])
         }
     }
 
+    // Check for any duplicate ips in ip list and remove them
+    sort(ips.begin(), ips.end());
+    ips.erase(unique(ips.begin(), ips.end()), ips.end());
+    
     // Check to see if anything integral wasn't assigned
     // If so, assign defaults here and return object? json?
     
