@@ -34,6 +34,7 @@ void printUsage()
     cout << "          ./portScan --help" << endl;
     cout << "          ./portScan [OPTIONS] [IP]" << endl;
     cout << "          ./portScan [--port] [--ip] [--file] [--transport]" << endl << endl;
+    cout << "          IMPORTANT: For UDP scanning, you must run with admin privileges due to raw sockets" << endl;
     cout << "          NOTE: If neither --ip nor --file is used, provide one IP address" << endl << endl;
     cout << "          OPTIONS" << endl;
     cout << "          --help" << endl;
@@ -67,10 +68,6 @@ bool parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ip
     bool single_ip = false;
 
     string filename = "";
-
-    //vector<int> ports;
-    //vector<string> ips;
-    //vector<string> protocols;
 
     cmatch match;
 
@@ -469,7 +466,6 @@ bool scan(int port, string ip, string protocol)
     
     if(protocol == "tcp")
     {
-        // Send a TCP RST when using close() instead of waiting
         linger lin;
         lin.l_onoff = 1;
         lin.l_linger = 0;
@@ -480,14 +476,11 @@ bool scan(int port, string ip, string protocol)
         rc = connect(fd, (struct sockaddr*) &serv_addr, sizeof(serv_addr));
         if(rc == -1 && errno != EINPROGRESS)
         {
-            // Failed to connect
-            //cout << "TCP connection failed" << endl;
             close(sockfd);
             return false;
         }
         if(rc == 0)
         {
-            //cout << "TCP connection succeeded" << endl;
             close(sockfd);
             return true;
         }       
@@ -507,16 +500,11 @@ bool scan(int port, string ip, string protocol)
 
                 if(so_error == 0)
                 {
-                    //cout << "socket connected." << endl;
                     close(sockfd);
                     return true;
                 }
-                else
-                {
-                    // error?
-                }
                 break;
-            case 0: //timeout
+            case 0:
                 break;
         }
 
