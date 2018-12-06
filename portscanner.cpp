@@ -367,13 +367,13 @@ bool parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ip
             cout << "unknown protocol: " << protocols[i] << endl;
             return false;
         }
-        else if(protocols[i] == "tcp")
+        else if(protocols[i] == "TCP")
         {
-            protocols[i] = "TCP";
+            protocols[i] = "tcp";
         }
-        else if(protocols[i] == "udp")
+        else if(protocols[i] == "UDP")
         {
-            protocols[i] = "UDP";
+            protocols[i] = "udp";
         }
     }
 
@@ -396,9 +396,9 @@ bool parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ip
 
     if(protocols.empty())
     {
-        cout << "no protocol specified, defaulting: [TCP,UDP]" << endl;
-        protocols.push_back("TCP");
-        protocols.push_back("UDP");
+        cout << "no protocol specified, defaulting: [tcp,udp]" << endl;
+        protocols.push_back("tcp");
+        protocols.push_back("udp");
     }
 
     cout << endl;
@@ -424,12 +424,12 @@ bool scan(int port, string ip, string protocol)
     int seconds = 1;
 
     // Set connection type
-    if(protocol == "TCP")
+    if(protocol == "tcp")
     {
         type = SOCK_STREAM;
         pro = 0;
     }
-    else if(protocol == "UDP")
+    else if(protocol == "udp")
     {
         type = SOCK_DGRAM;
         pro = IPPROTO_UDP;
@@ -567,12 +567,16 @@ bool scanPorts(vector<int> ports, vector<string> ips, vector<string> protocols)
                     cout << "\tclosed";
                 }
 
-                if(ports[k])
-                {
-                    cout << "\ttempservice" << endl;
-                }
-                // Based on the port number output a *potential* service as well
+                servent* service = getservbyport(htons(ports[k]), protocols[j].c_str());
 
+                if(service != NULL)
+                {
+                    cout << "\t" << service->s_name << endl;
+                }
+                else
+                {
+                    cout << endl;
+                }
             }
             cout << endl;
         }
@@ -603,5 +607,6 @@ int main(int argc, char* argv[])
     {
         return 1;
     }
+    
     return 0;
 }
