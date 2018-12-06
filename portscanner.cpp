@@ -6,6 +6,12 @@
 #include <sstream>
 #include <algorithm>
 
+#include <netdb.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <errno.h>
+
 using std::cout;
 using std::endl;
 using std::vector;
@@ -361,6 +367,14 @@ bool parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ip
             cout << "unknown protocol: " << protocols[i] << endl;
             return false;
         }
+        else if(protocols[i] == "tcp")
+        {
+            protocols[i] = "TCP";
+        }
+        else if(protocols[i] == "udp")
+        {
+            protocols[i] = "UDP";
+        }
     }
 
     // Check if no ip was specified
@@ -373,7 +387,7 @@ bool parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ip
     /******************* POPULATE DEFAULTS *******************/
     if(ports.empty())
     {
-        cout << "no ports specified, default: 1-1024" << endl;
+        cout << "no ports specified, defaulting: 1-1024" << endl;
         for(int i = 1; i <= 1024; i++)
         {
             ports.push_back(i);
@@ -382,31 +396,187 @@ bool parseOptions(int argc, char* argv[], vector<int> &ports, vector<string> &ip
 
     if(protocols.empty())
     {
-        cout << "no protocol specified, default: [TCP,UDP]" << endl;
+        cout << "no protocol specified, defaulting: [TCP,UDP]" << endl;
         protocols.push_back("TCP");
         protocols.push_back("UDP");
     }
 
-    // Print summary (TODO: formatting)
     cout << endl;
-    cout << "ports:" << endl;
-    for(int i = 0; i < ports.size(); i++)
+    return true;
+}
+
+bool scan(int port, string ip, string protocol)
+{
+    int sockfd;
+    int type;
+    int pro;
+    char buffer[256];
+
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
+
+    short int fd = -1;
+    struct timeval tv;
+    fd_set fdset;
+    int rc;
+    int so_error;
+    socklen_t len;
+    int seconds = 1;
+
+    // Set connection type
+    if(protocol == "TCP")
     {
-        cout << "ports[" << i << "] = " << ports[i] << endl;
+        type = SOCK_STREAM;
+        pro = 0;
+    }
+    else if(protocol == "UDP")
+    {
+        type = SOCK_DGRAM;
+        pro = IPPROTO_UDP;
+    }
+    else
+    {
+        cout << "unknown protocol: " << protocol << endl;
+        exit(1);
     }
 
-    cout << endl;
-    cout << "ips:" << endl;
+    sockfd = socket(AF_INET, type, pro);
+    fcntl(sockfd, F_SETFL, O_NONBLOCK);
+
+    if(sockfd < 0)
+    {
+        perror("error creating socket");
+        exit(1);
+    }
+
+    server = gethostbyname(ip.c_str());
+
+    if(server == NULL)
+    {
+        perror("error setting host");
+        exit(1);
+    }
+
+    // Zero out the server struct
+    bzero((char*) &serv_addr, sizeof(serv_addr));
+
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_port = htons(port);
+
+    memcpy(&serv_addr.sin_addr, server->h_addr, server->h_length);
+    
+    if(protocol == "TCP")
+    {
+        // Send a TCP RST when using close() instead of waiting
+        linger lin;
+        lin.l_onoff = 1;
+        lin.l_linger = 0;
+
+        setsockopt(sockfd, SOL_SOCKET, SO_LINGER, (void*) &lin, sizeof(lin));
+
+        // Connect
+        rc = connect(fd, (struct sockaddr*) &serv_addr, sizeof(serv_addr));
+        if(rc == -1 && errno != EINPROGRESS)
+        {
+            // Failed to connect
+            //cout << "TCP connection failed" << endl;
+            close(sockfd);
+            return false;
+        }
+        if(rc == 0)
+        {
+            //cout << "TCP connection succeeded" << endl;
+            close(sockfd);
+            return true;
+        }       
+
+        FD_ZERO(&fdset);
+        FD_SET(sockfd, &fdset);
+        tv.tv_sec = seconds;
+        tv.tv_usec = 0;
+
+        rc = select(fd + 1, NULL, &fdset, NULL, &tv);
+        switch(rc)
+        {
+            case 1:
+                len = sizeof(so_error);
+
+                getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+
+                if(so_error == 0)
+                {
+                    //cout << "socket connected." << endl;
+                    close(sockfd);
+                    return true;
+                }
+                else
+                {
+                    // error?
+                }
+                break;
+            case 0: //timeout
+                break;
+        }
+
+        close(sockfd);
+
+        return false;
+    }
+    else if(protocol == "UDP")
+    {
+        if(sendto(sockfd, buffer, strlen(buffer), 0, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) == -1)
+        {
+            perror("could not send udp message");
+            exit(1);
+        }
+        
+        recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &serv_addr, (socklen_t*) sizeof(serv_addr));
+        //printf("Received packet from %s:%d\nData: %s\n\n", inet_ntoa(serv_addr.sin_addr), ntohs(serv_addr.sin_port), buffer);
+
+        //if(buffer == "ICMP whatever") do stuff
+        close(sockfd);
+    }
+
+    return true;
+}
+
+bool scanPorts(vector<int> ports, vector<string> ips, vector<string> protocols)
+{
+    cout << "portscan of ports: " << ports[0] << "-" << ports[ports.size()-1] << endl;
+    cout << "---------------------------------------------------" << endl;
     for(int i = 0; i < ips.size(); i++)
     {
-        cout << "ips[" << i << "] = " << ips[i] << endl;
-    }
+        cout << ips[i] << endl << endl;
 
-    cout << endl;
-    cout << "protocols:" << endl;
-    for(int i = 0; i < protocols.size(); i++)
-    {
-        cout << "protocols[" << i << "] = " << protocols[i] << endl;
+        for(int j = 0; j < protocols.size(); j++)
+        {
+            cout << "   " << protocols[j] << " port\tstate\tservice" << endl;
+
+            for(int k = 0; k < ports.size(); k++)
+            {
+                cout << "\t" << ports[k];
+                // Scan the port and return the state
+                if(scan(ports[k], ips[i], protocols[j]))
+                {
+                    // print open
+                    cout << "\topen";
+                }
+                else
+                {
+                    // print closed
+                    cout << "\tclosed";
+                }
+
+                if(ports[k])
+                {
+                    cout << "\ttempservice" << endl;
+                }
+                // Based on the port number output a *potential* service as well
+
+            }
+            cout << endl;
+        }
+        cout << "---------------------------------------------------" << endl;
     }
 
     return true;
@@ -429,5 +599,9 @@ int main(int argc, char* argv[])
         return 1;
     }
     
+    if(!scanPorts(ports, ips, protocols))
+    {
+        return 1;
+    }
     return 0;
 }
