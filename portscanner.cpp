@@ -11,6 +11,8 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <netinet/ip.h>
+#include <netinet/ip_icmp.h>
 
 using std::cout;
 using std::endl;
@@ -56,7 +58,7 @@ void printUsage()
     cout << "                      scan ip addresses in file" << endl;
     cout << "          --transport" << endl;
     cout << "                      scan designed transport protocol" << endl;
-    cout << "                      values = [TCP,UDP]  --transport UDP" << endl;
+    cout << "                      values = [tcp,udp]  --transport UDP" << endl;
     cout << "                      defaults to both" << endl;
 }
 
@@ -465,7 +467,7 @@ bool scan(int port, string ip, string protocol)
 
     memcpy(&serv_addr.sin_addr, server->h_addr, server->h_length);
     
-    if(protocol == "TCP")
+    if(protocol == "tcp")
     {
         // Send a TCP RST when using close() instead of waiting
         linger lin;
@@ -522,18 +524,56 @@ bool scan(int port, string ip, string protocol)
 
         return false;
     }
-    else if(protocol == "UDP")
+    else if(protocol == "udp")
     {
+        int r;
+
+        if((r = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)) < 0)
+        {
+            perror("could not create icmp socket");
+            exit(1);
+        }
+
         if(sendto(sockfd, buffer, strlen(buffer), 0, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) == -1)
         {
             perror("could not send udp message");
+            close(sockfd);
             exit(1);
         }
         
-        recvfrom(sockfd, buffer, sizeof(buffer), 0, (struct sockaddr *) &serv_addr, (socklen_t*) sizeof(serv_addr));
-        //printf("Received packet from %s:%d\nData: %s\n\n", inet_ntoa(serv_addr.sin_addr), ntohs(serv_addr.sin_port), buffer);
+        tv.tv_sec = 1;
+        tv.tv_usec = 0;
 
-        //if(buffer == "ICMP whatever") do stuff
+        FD_ZERO(&fdset);
+        FD_SET(sockfd, &fdset);
+
+        if(select(sockfd + 1, &fdset, NULL, NULL, &tv) > 0)
+        {
+            recvfrom(sockfd, &buffer, sizeof(buffer), 0, NULL, NULL);
+        }
+        else if(!FD_ISSET(sockfd, &fdset))
+        {
+            close(sockfd);
+            return true;
+        }
+        else
+        {
+            perror("udp recvfrom failed");
+            close(sockfd);
+            exit(1);
+        }
+
+        struct ip* iphdr = (struct ip*) buffer;
+        int iplen = iphdr->ip_hl << 2;
+
+        struct icmp* icmp = (struct icmp*) (buffer + iplen);
+
+        if((icmp->icmp_type == ICMP_UNREACH) && (icmp->icmp_code == ICMP_UNREACH_PORT))
+        {
+            close(sockfd);
+            return false;
+        }
+
         close(sockfd);
     }
 
@@ -558,12 +598,10 @@ bool scanPorts(vector<int> ports, vector<string> ips, vector<string> protocols)
                 // Scan the port and return the state
                 if(scan(ports[k], ips[i], protocols[j]))
                 {
-                    // print open
                     cout << "\topen";
                 }
                 else
                 {
-                    // print closed
                     cout << "\tclosed";
                 }
 
